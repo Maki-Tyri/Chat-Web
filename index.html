@@ -1,290 +1,234 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Savings Tracker</title>
-  <link rel="manifest" href="manifest.json"/>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
-    :root {
-      --bg: #f5f5f5;
-      --fg: #111;
-      --box: #fff;
-    }
-    .dark {
-      --bg: #1e1e1e;
-      --fg: #fff;
-      --box: #2c2c2c;
-    }
     body {
-      background: var(--bg);
-      color: var(--fg);
-      margin: 0;
       font-family: Arial, sans-serif;
-      transition: background 0.3s, color 0.3s;
+      margin: 0;
+      padding: 20px;
+      background: #f0f0f0;
+      color: #333;
+    }
+    .dark-mode {
+      background: #121212;
+      color: #eee;
     }
     .container {
-      max-width: 500px;
+      max-width: 600px;
       margin: auto;
-      padding: 1rem;
     }
-    .box {
-      background: var(--box);
-      border-radius: 10px;
-      padding: 1rem;
-      margin-bottom: 1rem;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    h2 {
+      text-align: center;
     }
     input, select, button {
-      width: 100%;
-      padding: 0.5rem;
-      margin-top: 0.5rem;
-      border-radius: 5px;
-      font-size: 1rem;
-      border: 1px solid #ccc;
-    }
-    button {
-      background: #4CAF50;
-      color: white;
-      border: none;
-    }
-    .top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .top i {
-      font-size: 1.5rem;
-      cursor: pointer;
-      margin-left: 10px;
+      padding: 10px;
+      margin: 5px;
+      width: calc(100% - 22px);
     }
     table {
       width: 100%;
-      margin-top: 1rem;
+      margin-top: 10px;
       border-collapse: collapse;
     }
     th, td {
-      padding: 0.5rem;
-      border-bottom: 1px solid #ccc;
+      padding: 6px;
+      border: 1px solid #ccc;
+      text-align: center;
     }
     canvas {
-      max-width: 100%;
+      display: block;
+      margin: 20px auto;
+    }
+    #installBtn {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      padding: 10px 15px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      display: none;
     }
   </style>
 </head>
 <body>
-  <div class="container" id="app"></div>
+  <div class="container">
+    <h2>Savings Tracker</h2>
+
+    <label for="amount">Amount:</label>
+    <input type="number" id="amount" required>
+
+    <label for="category">Category:</label>
+    <select id="category" required>
+      <option value="Food">Food</option>
+      <option value="Bills">Bills</option>
+      <option value="Transport">Transport</option>
+      <option value="Shopping">Shopping</option>
+      <option value="Others">Others</option>
+    </select>
+
+    <button id="addBtn">Add Savings</button>
+    <button id="cashOutBtn">Cash Out</button>
+    <button id="exportBtn">Export PDF</button>
+    <button id="themeBtn">Toggle Theme</button>
+
+    <h3>History</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Amount</th>
+          <th>Type</th>
+          <th>Category</th>
+        </tr>
+      </thead>
+      <tbody id="transactionTableBody"></tbody>
+    </table>
+
+    <canvas id="categoryChart" width="400" height="200"></canvas>
+  </div>
+
+  <button id="installBtn">Install App</button>
 
   <script>
-    const $ = id => document.getElementById(id);
-    const app = $("app");
-    let currentUser = localStorage.getItem("loggedInUser");
-    let deferredPrompt;
+    const transactionTableBody = document.getElementById("transactionTableBody");
 
-    function getUsers() {
-      return JSON.parse(localStorage.getItem("users") || "{}");
+    function getUserData() {
+      return JSON.parse(localStorage.getItem("savingsData") || '{"transactions": []}');
     }
 
-    function saveUsers(users) {
-      localStorage.setItem("users", JSON.stringify(users));
+    function saveUserData(data) {
+      localStorage.setItem("savingsData", JSON.stringify(data));
     }
 
-    function renderLogin() {
-      app.innerHTML = `
-        <div class="box">
-          <h2>Login / Signup</h2>
-          <input id="username" placeholder="Username">
-          <input id="password" placeholder="Password" type="password">
-          <button onclick="login()">Enter</button>
-        </div>
+    function getFilteredTransactions(transactions) {
+      return transactions; // Extend this for future date filters
+    }
+
+    function addTransactionToList(transaction) {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${transaction.date}</td>
+        <td>${transaction.amount}</td>
+        <td>${transaction.type}</td>
+        <td>${transaction.category}</td>
       `;
+      transactionTableBody.appendChild(row);
     }
 
-    function login() {
-      const user = $("username").value;
-      const pass = $("password").value;
-      let users = getUsers();
-      if (users[user]) {
-        if (users[user].password === pass) {
-          localStorage.setItem("loggedInUser", user);
-          renderApp();
-        } else alert("Wrong password.");
-      } else {
-        users[user] = { password: pass, savings: [] };
-        saveUsers(users);
-        localStorage.setItem("loggedInUser", user);
-        renderApp();
-      }
+    function renderTransactions() {
+      const data = getUserData();
+      const filtered = getFilteredTransactions(data.transactions);
+      transactionTableBody.innerHTML = "";
+      filtered.forEach(addTransactionToList);
     }
 
-    function logout() {
-      localStorage.removeItem("loggedInUser");
-      renderLogin();
+    document.getElementById("addBtn").onclick = () => {
+      saveTransaction(document.getElementById("amount").value, "Add");
+    };
+    document.getElementById("cashOutBtn").onclick = () => {
+      saveTransaction(document.getElementById("amount").value, "Cash Out");
+    };
+
+    function saveTransaction(amount, type) {
+      if (!amount) return alert("Enter amount");
+      const date = new Date().toISOString().slice(0, 10);
+      const category = document.getElementById("category").value;
+      const transaction = { date, amount, type, category };
+      const data = getUserData();
+      data.transactions.push(transaction);
+      saveUserData(data);
+      renderTransactions();
+      renderCategoryChart();
     }
 
-    function renderApp() {
-      currentUser = localStorage.getItem("loggedInUser");
-      const users = getUsers();
-      const data = users[currentUser]?.savings || [];
-      const total = data.reduce((sum, e) => e.type === "in" ? sum + e.amount : sum - e.amount, 0);
-      app.innerHTML = `
-        <div class="top">
-          <h2>${currentUser}</h2>
-          <div>
-            <i class="fas fa-moon" onclick="toggleTheme()"></i>
-            <i class="fas fa-download" onclick="installApp()"></i>
-            <i class="fas fa-sign-out-alt" onclick="logout()"></i>
-          </div>
-        </div>
-        <div class="box">
-          <h3>Balance: ₱${total.toFixed(2)}</h3>
-          <input id="amount" type="number" placeholder="Amount">
-          <select id="type">
-            <option value="in">Add</option>
-            <option value="out">Cash Out</option>
-          </select>
-          <select id="category">
-            <option>Salary</option>
-            <option>Food</option>
-            <option>Bills</option>
-            <option>Shopping</option>
-            <option>Others</option>
-          </select>
-          <input id="date" type="date">
-          <button onclick="addSaving()">Submit</button>
-        </div>
-        <div class="box">
-          <input type="month" id="monthFilter">
-          <input type="date" id="startDate">
-          <input type="date" id="endDate">
-          <button onclick="renderApp()">Filter</button>
-        </div>
-        <div class="box">
-          <h3>History</h3>
-          <table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Cat</th><th></th></tr></thead>
-          <tbody id="historyRows"></tbody></table>
-        </div>
-        <div class="box">
-          <h3>Category Breakdown</h3>
-          <canvas id="chart"></canvas>
-        </div>
-        <div class="box">
-          <button onclick="exportPDF()">Export PDF</button>
-        </div>
-      `;
-      const filtered = applyFilter(data);
-      renderHistory(filtered);
-      renderChart(filtered);
-    }
-
-    function applyFilter(data) {
-      const month = $("monthFilter")?.value;
-      const start = $("startDate")?.value;
-      const end = $("endDate")?.value;
-      return data.filter(e => {
-        return (!month || e.date.startsWith(month)) &&
-               (!start || e.date >= start) &&
-               (!end || e.date <= end);
+    let categoryChart;
+    function renderCategoryChart() {
+      const data = getUserData();
+      const filtered = getFilteredTransactions(data.transactions);
+      const totals = {};
+      filtered.forEach(t => {
+        if (!totals[t.category]) totals[t.category] = 0;
+        totals[t.category] += Number(t.amount);
       });
-    }
-
-    function renderHistory(data) {
-      $("historyRows").innerHTML = data.map((e, i) => `
-        <tr>
-          <td>${e.date}</td>
-          <td>${e.type === "in" ? "Add" : "Out"}</td>
-          <td>₱${e.amount.toFixed(2)}</td>
-          <td>${e.category || "N/A"}</td>
-          <td><button onclick="deleteEntry(${i})">🗑️</button></td>
-        </tr>
-      `).join('');
-    }
-
-    function renderChart(data) {
-      const ctx = document.getElementById("chart").getContext("2d");
-      const categories = {};
-      data.forEach(e => {
-        const cat = e.category || "Others";
-        categories[cat] = (categories[cat] || 0) + (e.type === "in" ? e.amount : -e.amount);
-      });
-      if (window.savingsChart) window.savingsChart.destroy();
-      window.savingsChart = new Chart(ctx, {
+      const labels = Object.keys(totals);
+      const values = Object.values(totals);
+      const colors = ['#f38b4a', '#56d798', '#ff8397', '#6970d5', '#ffa500'];
+      if (categoryChart) categoryChart.destroy();
+      const ctx = document.getElementById("categoryChart").getContext("2d");
+      categoryChart = new Chart(ctx, {
         type: "pie",
         data: {
-          labels: Object.keys(categories),
+          labels,
           datasets: [{
-            data: Object.values(categories).map(x => Math.abs(x)),
-            backgroundColor: ['#4CAF50','#F44336','#2196F3','#FF9800','#9C27B0']
+            data: values,
+            backgroundColor: colors.slice(0, labels.length),
           }]
+        },
+        options: {
+          plugins: {
+            title: { display: true, text: "Spending by Category" }
+          }
         }
       });
-    }
-
-    function addSaving() {
-      const amt = parseFloat($("amount").value);
-      const type = $("type").value;
-      const cat = $("category").value;
-      const date = $("date").value || new Date().toISOString().slice(0,10);
-      if (isNaN(amt) || amt <= 0) return alert("Invalid amount");
-      let users = getUsers();
-      users[currentUser].savings.push({ amount: amt, type, date, category: cat });
-      saveUsers(users);
-      renderApp();
-    }
-
-    function deleteEntry(index) {
-      let users = getUsers();
-      const filtered = applyFilter(users[currentUser].savings);
-      const realIndex = users[currentUser].savings.indexOf(filtered[index]);
-      users[currentUser].savings.splice(realIndex, 1);
-      saveUsers(users);
-      renderApp();
     }
 
     function exportPDF() {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
-      const users = getUsers();
-      const data = applyFilter(users[currentUser].savings);
-      doc.text(`Savings Report - ${currentUser}`, 10, 10);
+      doc.text("Savings Tracker Report", 10, 10);
+      const data = getUserData();
+      const filtered = getFilteredTransactions(data.transactions);
       let y = 20;
-      data.forEach(e => {
-        doc.text(`${e.date} - ${e.category} - ${e.type === "in" ? "+" : "-"}₱${e.amount}`, 10, y);
-        y += 8;
+      filtered.forEach((t, i) => {
+        doc.text(`${i+1}. ${t.date} - ${t.amount} - ${t.type} - ${t.category}`, 10, y);
+        y += 10;
       });
-      doc.save("savings-report.pdf");
+      doc.save("savings_report.pdf");
     }
 
-    function toggleTheme() {
-      document.body.classList.toggle("dark");
-      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
-    }
+    document.getElementById("exportBtn").onclick = exportPDF;
 
-    if (localStorage.getItem("theme") === "dark") document.body.classList.add("dark");
-    if (currentUser) renderApp(); else renderLogin();
+    document.getElementById("themeBtn").onclick = () => {
+      document.body.classList.toggle("dark-mode");
+    };
 
-    // PWA install prompt
-    window.addEventListener("beforeinstallprompt", e => {
+    // PWA Install
+    let deferredPrompt;
+    const installBtn = document.getElementById("installBtn");
+
+    window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
       deferredPrompt = e;
+      installBtn.style.display = "block";
     });
 
-    function installApp() {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then(() => {
-          deferredPrompt = null;
-        });
-      }
+    installBtn.addEventListener("click", () => {
+      installBtn.style.display = "none";
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then(choiceResult => {
+        deferredPrompt = null;
+      });
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("service-worker.js")
+          .then(reg => console.log("SW registered", reg))
+          .catch(err => console.log("SW failed", err));
+      });
     }
 
-    // Register service worker
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("sw.js");
-    }
+    // Init
+    renderTransactions();
+    renderCategoryChart();
   </script>
 </body>
 </html>
