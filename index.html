@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Savings Tracker</title>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f5f5f5;
+      --fg: #111;
+      --box: #fff;
+    }
+    .dark {
+      --bg: #1e1e1e;
+      --fg: #fff;
+      --box: #2c2c2c;
+    }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      margin: 0;
+      font-family: Arial, sans-serif;
+      transition: background 0.3s, color 0.3s;
+    }
+    .container {
+      max-width: 500px;
+      margin: auto;
+      padding: 1rem;
+    }
+    .box {
+      background: var(--box);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    input, select, button {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      border-radius: 5px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+    }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .top i {
+      font-size: 1.5rem;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    table {
+      width: 100%;
+      margin-top: 1rem;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 0.5rem;
+      border-bottom: 1px solid #ccc;
+    }
+    canvas {
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="app"></div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const app = $("app");
+    let currentUser = localStorage.getItem("loggedInUser");
+    let deferredPrompt;
+
+    function getUsers() {
+      return JSON.parse(localStorage.getItem("users") || "{}");
+    }
+
+    function saveUsers(users) {
+      localStorage.setItem("users", JSON.stringify(users));
+    }
+
+    function renderLogin() {
+      app.innerHTML = `
+        <div class="box">
+          <h2>Login / Signup</h2>
+          <input id="username" placeholder="Username">
+          <input id="password" placeholder="Password" type="password">
+          <button onclick="login()">Enter</button>
+        </div>
+      `;
+    }
+
+    function login() {
+      const user = $("username").value;
+      const pass = $("password").value;
+      let users = getUsers();
+      if (users[user]) {
+        if (users[user].password === pass) {
+          localStorage.setItem("loggedInUser", user);
+          renderApp();
+        } else alert("Wrong password.");
+      } else {
+        users[user] = { password: pass, savings: [] };
+        saveUsers(users);
+        localStorage.setItem("loggedInUser", user);
+        renderApp();
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem("loggedInUser");
+      renderLogin();
+    }
+
+    function renderApp() {
+      currentUser = localStorage.getItem("loggedInUser");
+      const users = getUsers();
+      const data = users[currentUser]?.savings || [];
+      const total = data.reduce((sum, e) => e.type === "in" ? sum + e.amount : sum - e.amount, 0);
+      app.innerHTML = `
+        <div class="top">
+          <h2>${currentUser}</h2>
+          <div>
+            <i class="fas fa-moon" onclick="toggleTheme()"></i>
+            <i class="fas fa-download" onclick="installApp()"></i>
+            <i class="fas fa-sign-out-alt" onclick="logout()"></i>
+          </div>
+        </div>
+        <div class="box">
+          <h3>Balance: ₱${total.toFixed(2)}</h3>
+          <input id="amount" type="number" placeholder="Amount">
+          <select id="type">
+            <option value="in">Add</option>
+            <option value="out">Cash Out</option>
+          </select>
+          <select id="category">
+            <option>Salary</option>
+            <option>Food</option>
+            <option>Bills</option>
+            <option>Shopping</option>
+            <option>Others</option>
+          </select>
+          <input id="date" type="date">
+          <button onclick="addSaving()">Submit</button>
+        </div>
+        <div class="box">
+          <input type="month" id="monthFilter">
+          <input type="date" id="startDate">
+          <input type="date" id="endDate">
+          <button onclick="renderApp()">Filter</button>
+        </div>
+        <div class="box">
+          <h3>History</h3>
+          <table><thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Cat</th><th></th></tr></thead>
+          <tbody id="historyRows"></tbody></table>
+        </div>
+        <div class="box">
+          <h3>Category Breakdown</h3>
+          <canvas id="chart"></canvas>
+        </div>
+        <div class="box">
+          <button onclick="exportPDF()">Export PDF</button>
+        </div>
+      `;
+      const filtered = applyFilter(data);
+      renderHistory(filtered);
+      renderChart(filtered);
+    }
+
+    function applyFilter(data) {
+      const month = $("monthFilter")?.value;
+      const start = $("startDate")?.value;
+      const end = $("endDate")?.value;
+      return data.filter(e => {
+        return (!month || e.date.startsWith(month)) &&
+               (!start || e.date >= start) &&
+               (!end || e.date <= end);
+      });
+    }
+
+    function renderHistory(data) {
+      $("historyRows").innerHTML = data.map((e, i) => `
+        <tr>
+          <td>${e.date}</td>
+          <td>${e.type === "in" ? "Add" : "Out"}</td>
+          <td>₱${e.amount.toFixed(2)}</td>
+          <td>${e.category || "N/A"}</td>
+          <td><button onclick="deleteEntry(${i})">🗑️</button></td>
+        </tr>
+      `).join('');
+    }
+
+    function renderChart(data) {
+      const ctx = document.getElementById("chart").getContext("2d");
+      const categories = {};
+      data.forEach(e => {
+        const cat = e.category || "Others";
+        categories[cat] = (categories[cat] || 0) + (e.type === "in" ? e.amount : -e.amount);
+      });
+      if (window.savingsChart) window.savingsChart.destroy();
+      window.savingsChart = new Chart(ctx, {
+        type: "pie",
+        data: {
+          labels: Object.keys(categories),
+          datasets: [{
+            data: Object.values(categories).map(x => Math.abs(x)),
+            backgroundColor: ['#4CAF50','#F44336','#2196F3','#FF9800','#9C27B0']
+          }]
+        }
+      });
+    }
+
+    function addSaving() {
+      const amt = parseFloat($("amount").value);
+      const type = $("type").value;
+      const cat = $("category").value;
+      const date = $("date").value || new Date().toISOString().slice(0,10);
+      if (isNaN(amt) || amt <= 0) return alert("Invalid amount");
+      let users = getUsers();
+      users[currentUser].savings.push({ amount: amt, type, date, category: cat });
+      saveUsers(users);
+      renderApp();
+    }
+
+    function deleteEntry(index) {
+      let users = getUsers();
+      const filtered = applyFilter(users[currentUser].savings);
+      const realIndex = users[currentUser].savings.indexOf(filtered[index]);
+      users[currentUser].savings.splice(realIndex, 1);
+      saveUsers(users);
+      renderApp();
+    }
+
+    function exportPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const users = getUsers();
+      const data = applyFilter(users[currentUser].savings);
+      doc.text(`Savings Report - ${currentUser}`, 10, 10);
+      let y = 20;
+      data.forEach(e => {
+        doc.text(`${e.date} - ${e.category} - ${e.type === "in" ? "+" : "-"}₱${e.amount}`, 10, y);
+        y += 8;
+      });
+      doc.save("savings-report.pdf");
+    }
+
+    function toggleTheme() {
+      document.body.classList.toggle("dark");
+      localStorage.setItem("theme", document.body.classList.contains("dark") ? "dark" : "light");
+    }
+
+    if (localStorage.getItem("theme") === "dark") document.body.classList.add("dark");
+    if (currentUser) renderApp(); else renderLogin();
+
+    // PWA install prompt
+    window.addEventListener("beforeinstallprompt", e => {
+      e.preventDefault();
+      deferredPrompt = e;
+    });
+
+    function installApp() {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(() => {
+          deferredPrompt = null;
+        });
+      }
+    }
+
+    // Register service worker
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js");
+    }
+  </script>
+</body>
+</html>
